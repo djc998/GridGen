@@ -10,8 +10,8 @@ import Footer from '@/components/layout/footer'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Image Grid Generator',
-  description: 'Generate grid versions of images',
+  title: 'ScramPixs',
+  description: 'Mix. Match. Solve. Test your knowledge by guessing images as they become clearer over time.',
 }
 
 export default function RootLayout({

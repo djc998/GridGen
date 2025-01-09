@@ -4,6 +4,10 @@ import { createClient } from '@/lib/supabase/middleware'
 
 const processedRequests = new Set<string>()
 
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function POST(request: NextRequest) {
   const requestId = `${Date.now()}-${Math.random()}`
   console.log(`[${requestId}] Starting new request`)
@@ -112,7 +116,7 @@ export async function POST(request: NextRequest) {
         grid5: supabase.storage.from('images').getPublicUrl(`grid5/${filename}`).data.publicUrl,
       }
 
-      let imageId = null
+      let imageId: string | null = null
 
       // Only save to database if shouldSave is true
       if (shouldSave) {
@@ -185,10 +189,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-}
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
 } 

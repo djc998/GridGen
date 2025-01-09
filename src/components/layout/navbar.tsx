@@ -31,7 +31,7 @@ export default function Navbar() {
               href="/"
               className="flex-shrink-0 flex items-center"
             >
-              <span className="text-xl font-bold text-blue-600">GridGen</span>
+              <span className="text-xl font-bold text-blue-600">ScramPixs</span>
             </Link>
           </div>
 
@@ -45,12 +45,6 @@ export default function Navbar() {
                       className="text-gray-700 hover:text-gray-900"
                     >
                       Dashboard
-                    </Link>
-                    <Link
-                      href="/upload"
-                      className="text-gray-700 hover:text-gray-900"
-                    >
-                      Upload
                     </Link>
                     <Link
                       href="/view"

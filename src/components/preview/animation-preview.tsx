@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import LoadingSpinner from '@/components/ui/loading-spinner'
 import { useToast } from '@/components/ui/toast'
+import { UserImage } from '@/types/database'
 
 interface AnimationPreviewProps {
   images: {
@@ -19,7 +20,7 @@ export default function AnimationPreview({ images }: AnimationPreviewProps) {
   const [currentImage, setCurrentImage] = useState<string>(images.original)
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1000)
-  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set())
+  const [loadedImages, setLoadedImages] = useState<string[]>([])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [pattern, setPattern] = useState<AnimationPattern>('sequential')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -27,10 +28,10 @@ export default function AnimationPreview({ images }: AnimationPreviewProps) {
 
   // Preload images
   useEffect(() => {
-    const imageUrls = Object.values(images)
     let mounted = true
 
     const preloadImages = async () => {
+      const imageUrls = Object.values(images)
       try {
         await Promise.all(
           imageUrls.map(
@@ -40,7 +41,7 @@ export default function AnimationPreview({ images }: AnimationPreviewProps) {
                 img.src = url
                 img.onload = () => {
                   if (mounted) {
-                    setLoadedImages((prev) => new Set([...prev, url]))
+                    setLoadedImages(prev => [...prev, url])
                   }
                   resolve(url)
                 }
@@ -50,15 +51,16 @@ export default function AnimationPreview({ images }: AnimationPreviewProps) {
         )
       } catch (error) {
         showToast('Failed to load some images', 'error')
-        console.error('Image loading error:', error)
       }
     }
 
     preloadImages()
-    return () => { mounted = false }
-  }, [images, showToast])
+    return () => {
+      mounted = false
+    }
+  }, [images])
 
-  const isLoading = loadedImages.size < Object.keys(images).length
+  const isLoaded = (url: string) => loadedImages.includes(url)
 
   // Animation patterns
   const getSequence = useCallback((): string[] => {
@@ -81,7 +83,7 @@ export default function AnimationPreview({ images }: AnimationPreviewProps) {
   }, [images, pattern])
 
   const playAnimation = useCallback(() => {
-    if (isLoading) return
+    if (!isLoaded(images.original)) return
 
     const sequence = getSequence()
     let index = 0
@@ -93,17 +95,17 @@ export default function AnimationPreview({ images }: AnimationPreviewProps) {
 
     const intervalId = setInterval(animate, speed)
     return () => clearInterval(intervalId)
-  }, [images, speed, isLoading, getSequence])
+  }, [images, speed, isLoaded, getSequence])
 
   useEffect(() => {
     let cleanup: (() => void) | undefined
 
-    if (isPlaying && !isLoading) {
+    if (isPlaying && !isLoaded(images.original)) {
       cleanup = playAnimation()
     }
 
     return () => cleanup?.()
-  }, [isPlaying, playAnimation, isLoading])
+  }, [isPlaying, playAnimation, isLoaded, images])
 
   // Keyboard controls
   useEffect(() => {
@@ -164,14 +166,7 @@ export default function AnimationPreview({ images }: AnimationPreviewProps) {
         isFullscreen ? 'fixed inset-0 bg-black flex flex-col items-center justify-center' : ''
       }`}
     >
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-          <LoadingSpinner size="large" />
-          <p className="text-gray-600">
-            Loading images... ({loadedImages.size}/{Object.keys(images).length})
-          </p>
-        </div>
-      ) : (
+      {isLoaded(images.original) ? (
         <>
           <div className={`relative bg-gray-100 rounded-lg overflow-hidden ${
             isFullscreen ? 'w-full h-full' : 'aspect-square'
@@ -240,6 +235,13 @@ export default function AnimationPreview({ images }: AnimationPreviewProps) {
             </div>
           </div>
         </>
+      ) : (
+        <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+          <LoadingSpinner size="large" />
+          <p className="text-gray-600">
+            Loading images... ({loadedImages.length}/{Object.keys(images).length})
+          </p>
+        </div>
       )}
     </div>
   )

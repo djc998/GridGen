@@ -26,7 +26,10 @@ export default function HomePage() {
             grid10_url,
             grid5_url,
             original_url,
-            category
+            category,
+            published,
+            created_at,
+            user_id
           `)
           .eq('published', true)
           .order('created_at', { ascending: false })
@@ -38,7 +41,7 @@ export default function HomePage() {
         }
 
         console.log('Fetched images:', data)
-        setFeaturedImages(data || [])
+        setFeaturedImages(data as UserImage[] || [])
       } catch (error) {
         console.error('Error fetching images:', error)
       } finally {
@@ -56,8 +59,11 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto py-16 px-4 sm:py-24 sm:px-6 lg:px-8">
           <div className="text-center">
             <h1 className="text-4xl font-extrabold text-gray-900 sm:text-5xl sm:tracking-tight lg:text-6xl">
-              Welcome to GridGen
+              Welcome to ScramPixs
             </h1>
+            <p className="mt-4 max-w-xl mx-auto text-3xl text-gray-500">
+              Mix. Match. Solve.
+            </p>
             <p className="mt-4 max-w-xl mx-auto text-xl text-gray-500">
               Test your knowledge by guessing images as they become clearer over time.
             </p>

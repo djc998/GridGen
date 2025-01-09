@@ -49,7 +49,7 @@ function ImageUploaderContent({ editId }: ImageUploaderProps) {
   const router = useRouter()
   const { showToast } = useToast()
   const [imageName, setImageName] = useState('')
-  const [category, setCategory] = useState('Other')
+  const [category, setCategory] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -418,7 +418,7 @@ function ImageUploaderContent({ editId }: ImageUploaderProps) {
   }
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto p-4">
+    <div className="space-y-6">
       {/* Processing Mode Selection */}
       <div className="flex items-center gap-4">
         <label className="flex items-center gap-2">
@@ -436,38 +436,40 @@ function ImageUploaderContent({ editId }: ImageUploaderProps) {
 
       {/* Image Details Form */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Image Details</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label htmlFor="imageName" className="block text-sm font-medium text-gray-700">
-              Image Name
-            </label>
-            <input
-              type="text"
-              id="imageName"
-              value={imageName}
-              onChange={(e) => setImageName(e.target.value)}
-              placeholder="Enter image name"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="category" className="block text-sm font-medium text-gray-700">
-              Category
-            </label>
-            <select
-              id="category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.name}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <label htmlFor="imageName" className="block text-sm font-medium text-gray-700 mb-1">
+            Image Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="imageName"
+            type="text"
+            value={imageName}
+            onChange={(e) => setImageName(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            required
+            placeholder="Enter image name"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
+            Category <span className="text-red-500">*</span>
+          </label>
+          <select
+            id="category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            required
+          >
+            <option value="">Select a category</option>
+            <option value="Guess the Character">Guess the Character</option>
+            <option value="Guess the Celebrity">Guess the Celebrity</option>
+            <option value="Guess the Car">Guess the Car</option>
+            <option value="Guess the Animal">Guess the Animal</option>
+            <option value="Guess the Movie">Guess the Movie</option>
+            <option value="Guess the TV Show">Guess the TV Show</option>
+          </select>
         </div>
 
         {/* Add Published Toggle */}

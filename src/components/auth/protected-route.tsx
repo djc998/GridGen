@@ -29,7 +29,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps): ReactElement => {
   }
 
   if (!user) {
-    return null
+    return <div className="hidden"></div>
   }
 
   return <>{children}</>

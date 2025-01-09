@@ -40,9 +40,14 @@ export async function processImage(file: File): Promise<{
         })
         .png() // Keep as PNG for processing
         .toBuffer()
-    } catch (resizeError) {
-      console.error('Resize error:', resizeError)
-      throw new Error(`Failed to resize image: ${resizeError.message}`)
+    } catch (error: unknown) {
+      console.error('Resize error:', error)
+      // Type guard for Error objects
+      if (error instanceof Error) {
+        throw new Error(`Failed to resize image: ${error.message}`)
+      }
+      // Generic error message for unknown error types
+      throw new Error('Failed to resize image: Unknown error')
     }
 
     // Process original (convert to WebP for final output)
@@ -51,47 +56,59 @@ export async function processImage(file: File): Promise<{
       original = await sharp(resizedImage)
         .webp({ quality: 90 })
         .toBuffer()
-    } catch (originalError) {
-      console.error('Original processing error:', originalError)
-      throw new Error(`Failed to process original image: ${originalError.message}`)
+    } catch (error: unknown) {
+      console.error('Original processing error:', error)
+      if (error instanceof Error) {
+        throw new Error(`Failed to process original image: ${error.message}`)
+      }
+      throw new Error('Failed to process original image: Unknown error')
     }
 
     // Create grid versions
     let grid15: Buffer, grid10: Buffer, grid5: Buffer
     try {
       grid15 = await createGridImage(resizedImage, 15)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Grid 15x15 error:', error)
-      throw new Error(`Failed to create 15x15 grid: ${error.message}`)
+      if (error instanceof Error) {
+        throw new Error(`Failed to create 15x15 grid: ${error.message}`)
+      }
+      throw new Error('Failed to create 15x15 grid: Unknown error')
     }
 
     try {
       grid10 = await createGridImage(resizedImage, 10)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Grid 10x10 error:', error)
-      throw new Error(`Failed to create 10x10 grid: ${error.message}`)
+      if (error instanceof Error) {
+        throw new Error(`Failed to create 10x10 grid: ${error.message}`)
+      }
+      throw new Error('Failed to create 10x10 grid: Unknown error')
     }
 
     try {
       grid5 = await createGridImage(resizedImage, 5)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Grid 5x5 error:', error)
-      throw new Error(`Failed to create 5x5 grid: ${error.message}`)
+      if (error instanceof Error) {
+        throw new Error(`Failed to create 5x5 grid: ${error.message}`)
+      }
+      throw new Error('Failed to create 5x5 grid: Unknown error')
     }
 
     return {
       original,
       grid15,
       grid10,
-      grid5,
+      grid5
     }
-  } catch (error) {
-    console.error('Image processing error:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    })
-    throw error
+
+  } catch (error: unknown) {
+    console.error('Image processing error:', error)
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error('Failed to process image: Unknown error')
   }
 }
 

@@ -9,6 +9,11 @@ export interface UserImage {
   published: boolean
   created_at?: string
   user_id?: string
+  image_tags?: ImageTag[]
+}
+
+export interface ImageTag {
+  tag_name: string
 }
 
 export interface Tag {
