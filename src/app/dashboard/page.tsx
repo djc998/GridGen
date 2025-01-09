@@ -7,6 +7,9 @@ import Link from 'next/link'
 import { useAuth } from '@/components/providers/auth-provider'
 import { Edit, Check, ChevronDown } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { ShareButtons } from '@/components/ui/share-buttons'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useToast } from '@/components/ui/toast'
 
 interface MultiSelectProps {
   options: string[]
@@ -162,6 +165,8 @@ export default function DashboardPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [sortBy, setSortBy] = useState<string>('newest')
+  const [deleteImageId, setDeleteImageId] = useState<string | null>(null)
+  const { showToast } = useToast()
 
   // Fetch images
   useEffect(() => {
@@ -232,6 +237,56 @@ export default function DashboardPage() {
   const filteredAndSortedImages = filteredImages
     .slice()
     .sort(sortOptions.find(opt => opt.value === sortBy)?.sortFn)
+
+  const handleDelete = async (imageId: string) => {
+    setDeleteImageId(imageId)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteImageId) return
+
+    try {
+      // Delete image from Supabase storage
+      const imageToDelete = images.find(img => img.id === deleteImageId)
+      if (imageToDelete) {
+        // Delete all versions of the image
+        const imagePaths = [
+          imageToDelete.original_url,
+          imageToDelete.grid15_url,
+          imageToDelete.grid10_url,
+          imageToDelete.grid5_url
+        ].map(url => url.split('/').pop()) // Get just the filename
+
+        await Promise.all(
+          imagePaths.map(path => {
+            if (path) {
+              return supabase.storage
+                .from('images')
+                .remove([path])
+            }
+            return Promise.resolve()
+          })
+        )
+
+        // Delete image record from database
+        const { error: deleteError } = await supabase
+          .from('images')
+          .delete()
+          .eq('id', deleteImageId)
+
+        if (deleteError) throw deleteError
+
+        // Update local state
+        setImages(images.filter(img => img.id !== deleteImageId))
+        showToast('Image deleted successfully', 'success')
+      }
+    } catch (error) {
+      console.error('Error deleting image:', error)
+      showToast('Failed to delete image', 'error')
+    } finally {
+      setDeleteImageId(null)
+    }
+  }
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -385,6 +440,27 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
+
+              <div className="flex justify-between items-center mt-2">
+                <div className="flex space-x-2">
+                  <Link
+                    href={`/upload?edit=${image.id}`}
+                    className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                  >
+                    <Edit className="w-4 h-4 text-gray-600" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(image.id)}
+                    className="ml-1 hover:text-red-600"
+                    aria-label="Delete image"
+                    title="Delete image"
+                  >
+                    ×
+                  </button>
+                </div>
+                <ShareButtons image={image} />
+              </div>
             </div>
           ))}
         </div>
@@ -399,6 +475,14 @@ export default function DashboardPage() {
           </p>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleteImageId}
+        onClose={() => setDeleteImageId(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Image"
+        message="Are you sure you want to delete this image? This action cannot be undone."
+      />
     </div>
   )
 } 
