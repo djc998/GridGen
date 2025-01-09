@@ -1,234 +1,388 @@
 'use client'
 
-import ProtectedRoute from '@/components/auth/protected-route'
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/components/providers/auth-provider'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { UserImage } from '@/types/database'
+import { UserImage } from '@/types/database'
 import Link from 'next/link'
-import LoadingSpinner from '@/components/ui/loading-spinner'
-import { useToast } from '@/components/ui/toast'
-import { Modal } from '@/components/ui/modal'
-import { ModalPreview } from '@/components/preview/modal-preview'
-import { Pencil } from 'lucide-react'
+import { useAuth } from '@/components/providers/auth-provider'
+import { Edit, Check, ChevronDown } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
 
-function DashboardContent() {
+interface MultiSelectProps {
+  options: string[]
+  selected: string[]
+  onChange: (selected: string[]) => void
+  placeholder: string
+  className?: string
+}
+
+function MultiSelect({ options, selected, onChange, placeholder, className = '' }: MultiSelectProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const toggleOption = (option: string) => {
+    const newSelected = selected.includes(option)
+      ? selected.filter(item => item !== option)
+      : [...selected, option]
+    onChange(newSelected)
+  }
+
+  return (
+    <div className={`relative ${className}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-2 text-left bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      >
+        <div className="flex items-center justify-between">
+          <span className="block truncate">
+            {selected.length === 0 
+              ? placeholder 
+              : `${selected.length} selected`}
+          </span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+          {options.map(option => (
+            <div
+              key={option}
+              className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer"
+              onClick={() => toggleOption(option)}
+            >
+              <div className={`
+                w-4 h-4 border rounded mr-2 flex items-center justify-center
+                ${selected.includes(option) ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}
+              `}>
+                {selected.includes(option) && (
+                  <Check className="w-3 h-3 text-white" />
+                )}
+              </div>
+              <span className="block truncate">{option}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {selected.map(item => (
+            <span
+              key={item}
+              className="inline-flex items-center px-2 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
+            >
+              {item}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleOption(item)
+                }}
+                className="ml-1 hover:text-blue-600"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const formatDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString)
+    return formatDistanceToNow(date, { addSuffix: true })
+  } catch (error) {
+    return 'Date unknown'
+  }
+}
+
+type SortOption = {
+  label: string
+  value: string
+  sortFn: (a: UserImage, b: UserImage) => number
+}
+
+const sortOptions: SortOption[] = [
+  {
+    label: 'Newest First',
+    value: 'newest',
+    sortFn: (a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()
+  },
+  {
+    label: 'Oldest First',
+    value: 'oldest',
+    sortFn: (a, b) => new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime()
+  },
+  {
+    label: 'A-Z',
+    value: 'alpha-asc',
+    sortFn: (a, b) => a.name.localeCompare(b.name)
+  },
+  {
+    label: 'Z-A',
+    value: 'alpha-desc',
+    sortFn: (a, b) => b.name.localeCompare(a.name)
+  },
+  {
+    label: 'Category',
+    value: 'category',
+    sortFn: (a, b) => a.category.localeCompare(b.category)
+  },
+  {
+    label: 'Status',
+    value: 'status',
+    sortFn: (a, b) => Number(b.published) - Number(a.published)
+  }
+]
+
+export default function DashboardPage() {
   const [images, setImages] = useState<UserImage[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchFilter, setSearchFilter] = useState<'name' | 'category' | 'tags'>('name')
   const { user } = useAuth()
-  const { showToast } = useToast()
-  const [selectedImage, setSelectedImage] = useState<{
-    url: string
-    title: string
-  } | null>(null)
-  const [showPreview, setShowPreview] = useState(false)
-  const [previewImage, setPreviewImage] = useState<UserImage | null>(null)
-  const router = useRouter()
+  const [categories, setCategories] = useState<Set<string>>(new Set())
+  const [availableTags, setAvailableTags] = useState<Set<string>>(new Set())
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [sortBy, setSortBy] = useState<string>('newest')
 
+  // Fetch images
   useEffect(() => {
     const fetchImages = async () => {
       if (!user) return
-      setIsLoading(true)
 
       try {
         const { data, error } = await supabase
           .from('images')
           .select(`
-            id, 
-            created_at, 
-            name, 
-            category, 
-            original_url, 
-            grid15_url, 
-            grid10_url, 
-            grid5_url,
+            *,
             image_tags (
               tag_name
-            ),
-            published
+            )
           `)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
 
         if (error) throw error
 
-        // Use a Map to ensure uniqueness by ID
-        const uniqueImagesMap = new Map(
-          data?.map(image => [image.id, image]) || []
-        )
-
-        setImages(Array.from(uniqueImagesMap.values()))
+        setImages(data || [])
       } catch (error) {
-        showToast('Error fetching images', 'error')
         console.error('Error fetching images:', error)
       } finally {
         setIsLoading(false)
       }
     }
 
-    if (user) {
-      fetchImages()
+    fetchImages()
+  }, [user])
+
+  // Add this effect to collect unique categories and tags
+  useEffect(() => {
+    const cats = new Set<string>()
+    const tags = new Set<string>()
+    
+    images.forEach(image => {
+      cats.add(image.category)
+      image.image_tags?.forEach(tag => {
+        tags.add(tag.tag_name)
+      })
+    })
+    
+    setCategories(cats)
+    setAvailableTags(tags)
+  }, [images])
+
+  // Filter images based on search query
+  const filteredImages = images.filter(image => {
+    if (selectedCategories.length > 0 && !selectedCategories.includes(image.category)) {
+      return false
     }
-  }, [user, showToast])
-
-  const handleDeleteImage = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('images')
-        .delete()
-        .match({ id })
-
-      if (error) throw error
-
-      setImages(images.filter(img => img.id !== id))
-      showToast('Image deleted successfully', 'success')
-    } catch (error) {
-      showToast('Error deleting image', 'error')
-      console.error('Error deleting image:', error)
+    
+    if (selectedTags.length > 0 && !selectedTags.some(selectedTag => 
+      image.image_tags?.some(imageTag => imageTag.tag_name === selectedTag)
+    )) {
+      return false
     }
-  }
+    
+    if (!searchQuery) {
+      return true
+    }
+    
+    const searchLower = searchQuery.toLowerCase()
+    return image.name.toLowerCase().includes(searchLower)
+  })
 
-  const handleEdit = (image: UserImage) => {
-    router.push(`/upload?edit=${image.id}`)
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <LoadingSpinner size="large" />
-      </div>
-    )
-  }
+  const filteredAndSortedImages = filteredImages
+    .slice()
+    .sort(sortOptions.find(opt => opt.value === sortBy)?.sortFn)
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">My Images</h1>
-        <div className="flex items-center gap-4">
-          {user && <span className="text-gray-600">{user.email}</span>}
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="text-sm text-red-600 hover:text-red-500"
-          >
-            Sign out
-          </button>
-          <Link
-            href="/upload"
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-          >
-            Upload New Image
-          </Link>
+        <h1 className="text-3xl font-bold">My Images</h1>
+        <Link
+          href="/upload"
+          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+        >
+          Upload New Image
+        </Link>
+      </div>
+
+      {/* New Search Section */}
+      <div className="mb-8 space-y-4">
+        <div className="flex flex-col md:flex-row gap-4">
+          {/* Text Search */}
+          <div className="flex-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by image name..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Category Filter */}
+          <div className="w-full md:w-64">
+            <MultiSelect
+              options={Array.from(categories).sort()}
+              selected={selectedCategories}
+              onChange={setSelectedCategories}
+              placeholder="Select categories"
+            />
+          </div>
+
+          {/* Tag Filter */}
+          <div className="w-full md:w-64">
+            <MultiSelect
+              options={Array.from(availableTags).sort()}
+              selected={selectedTags}
+              onChange={setSelectedTags}
+              placeholder="Select tags"
+            />
+          </div>
+
+          {/* Clear Filters Button */}
+          {(searchQuery || selectedCategories.length > 0 || selectedTags.length > 0) && (
+            <button
+              onClick={() => {
+                setSearchQuery('')
+                setSelectedCategories([])
+                setSelectedTags([])
+              }}
+              className="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors h-fit"
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+
+        <div className="flex justify-between items-center mb-4">
+          <p className="text-sm text-gray-500">
+            {filteredImages.length} {filteredImages.length === 1 ? 'image' : 'images'} found
+          </p>
+          
+          <div className="flex items-center gap-2">
+            <label htmlFor="sort" className="text-sm text-gray-600">
+              Sort by:
+            </label>
+            <select
+              id="sort"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500"
+            >
+              {sortOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
-      {images.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500">No images uploaded yet.</p>
-          <Link
-            href="/upload"
-            className="mt-4 inline-block text-blue-600 hover:text-blue-500"
-          >
-            Upload your first image
-          </Link>
+      {isLoading ? (
+        <div className="flex justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {images.map((image) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredAndSortedImages.map((image) => (
             <div
               key={image.id}
-              className="bg-white rounded-lg shadow overflow-hidden"
+              className="bg-white rounded-lg shadow-md overflow-hidden group relative"
             >
-              <div className="relative aspect-video">
+              <div className="aspect-square relative">
                 <img
-                  src={image.original_url}
+                  src={image.grid15_url}
                   alt={image.name}
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute top-2 right-2">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      image.published
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}
-                  >
+                  <span className={`
+                    px-2 py-1 rounded-full text-sm font-medium
+                    ${image.published 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-800'}
+                  `}>
                     {image.published ? 'Published' : 'Draft'}
                   </span>
                 </div>
               </div>
-              <div className="p-4 space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-lg font-medium text-gray-900">{image.name}</h3>
-                    <button
-                      onClick={() => handleEdit(image)}
-                      className="p-1 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100"
-                      title="Edit image"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
+
+              <div className="p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-semibold text-lg">{image.name}</h3>
+                    <p className="text-sm text-gray-500">
+                      Created {formatDate(image.created_at || '')}
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  <Link
+                    href={`/upload?edit=${image.id}`}
+                    className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                  >
+                    <Edit className="w-4 h-4 text-gray-600" />
+                  </Link>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
                       {image.category}
                     </span>
-                    {image.image_tags?.map(({ tag_name }) => (
-                      <span
-                        key={tag_name}
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
-                      >
-                        {tag_name}
-                      </span>
-                    ))}
                   </div>
-                </div>
-                <div className="flex justify-between items-center text-sm text-gray-500">
-                  <span>{new Date(image.created_at).toLocaleDateString()}</span>
-                  <button
-                    onClick={() => handleDeleteImage(image.id)}
-                    className="text-red-600 hover:text-red-500"
-                  >
-                    Delete
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setSelectedImage({
-                      url: image.grid15_url,
-                      title: '15x15 Grid'
-                    })}
-                    className="text-center text-sm text-blue-600 hover:text-blue-500 px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50"
-                  >
-                    15x15 Grid
-                  </button>
-                  <button
-                    onClick={() => setSelectedImage({
-                      url: image.grid10_url,
-                      title: '10x10 Grid'
-                    })}
-                    className="text-center text-sm text-blue-600 hover:text-blue-500 px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50"
-                  >
-                    10x10 Grid
-                  </button>
-                  <button
-                    onClick={() => setSelectedImage({
-                      url: image.grid5_url,
-                      title: '5x5 Grid'
-                    })}
-                    className="text-center text-sm text-blue-600 hover:text-blue-500 px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50"
-                  >
-                    5x5 Grid
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPreviewImage(image)
-                      setShowPreview(true)
-                    }}
-                    className="text-center text-sm text-blue-600 hover:text-blue-500 px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50"
-                  >
-                    Preview
-                  </button>
+
+                  {image.image_tags && image.image_tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {image.image_tags.map((tag: any) => (
+                        <span
+                          key={tag.tag_name}
+                          className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-sm"
+                        >
+                          {tag.tag_name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -236,42 +390,15 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* Image Modal */}
-      <Modal
-        isOpen={!!selectedImage && !showPreview}
-        onClose={() => setSelectedImage(null)}
-        title={selectedImage?.title}
-      >
-        {selectedImage && (
-          <div className="flex justify-center">
-            <img
-              src={selectedImage.url}
-              alt={selectedImage.title}
-              className="max-w-full max-h-[70vh] object-contain"
-            />
-          </div>
-        )}
-      </Modal>
-
-      {/* Preview Modal */}
-      <Modal
-        isOpen={showPreview}
-        onClose={() => {
-          setShowPreview(false)
-          setPreviewImage(null)
-        }}
-        title="Animation Preview"
-      >
-        {previewImage && <ModalPreview image={previewImage} />}
-      </Modal>
+      {!isLoading && filteredImages.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-gray-500 text-lg">
+            {searchQuery 
+              ? 'No images found matching your search'
+              : 'No images uploaded yet'}
+          </p>
+        </div>
+      )}
     </div>
-  )
-}
-
-export default function DashboardPage() {
-  return (
-    <ProtectedRoute>
-      <DashboardContent />
-    </ProtectedRoute>
   )
 } 

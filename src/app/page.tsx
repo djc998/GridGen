@@ -1,78 +1,128 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { UserImage } from '@/types/database'
+import { Modal } from '@/components/ui/modal'
+import { GuessGame } from '@/components/view/guess-game'
 import Link from 'next/link'
 
 export default function HomePage() {
+  const [featuredImages, setFeaturedImages] = useState<UserImage[]>([])
+  const [selectedImage, setSelectedImage] = useState<UserImage | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter()
+
+  useEffect(() => {
+    const fetchFeaturedImages = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('images')
+          .select(`
+            id,
+            name,
+            grid15_url,
+            grid10_url,
+            grid5_url,
+            original_url,
+            category
+          `)
+          .eq('published', true)
+          .order('created_at', { ascending: false })
+          .limit(12)
+
+        if (error) {
+          console.error('Fetch error:', error)
+          throw error
+        }
+
+        console.log('Fetched images:', data)
+        setFeaturedImages(data || [])
+      } catch (error) {
+        console.error('Error fetching images:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchFeaturedImages()
+  }, [])
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="text-center">
-          <h1 className="text-4xl font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
-            Image Grid Generator
-          </h1>
-          <p className="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
-            Create beautiful grid patterns from your images. Perfect for artistic projects, 
-            visual experiments, and creative exploration.
-          </p>
-          <div className="mt-5 max-w-md mx-auto sm:flex sm:justify-center md:mt-8">
-            <div className="rounded-md shadow">
+    <div className="min-h-screen bg-gray-50">
+      {/* Hero Section */}
+      <div className="bg-white">
+        <div className="max-w-7xl mx-auto py-16 px-4 sm:py-24 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h1 className="text-4xl font-extrabold text-gray-900 sm:text-5xl sm:tracking-tight lg:text-6xl">
+              Welcome to GridGen
+            </h1>
+            <p className="mt-4 max-w-xl mx-auto text-xl text-gray-500">
+              Test your knowledge by guessing images as they become clearer over time.
+            </p>
+            <div className="mt-8 flex justify-center gap-4">
               <Link
-                href="/upload"
-                className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10"
+                href="/view"
+                className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
               >
-                Get Started
+                Play Game
               </Link>
-            </div>
-            <div className="mt-3 rounded-md shadow sm:mt-0 sm:ml-3">
               <Link
-                href="/login"
-                className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-blue-600 bg-white hover:bg-gray-50 md:py-4 md:text-lg md:px-10"
+                href="/signup"
+                className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-blue-600 bg-blue-100 hover:bg-blue-200"
               >
-                Sign In
+                Create Account
               </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Feature Section */}
-        <div className="mt-32">
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-            <div className="text-center">
-              <div className="flex items-center justify-center h-12 w-12 rounded-md bg-blue-500 text-white mx-auto">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="mt-6 text-lg font-medium text-gray-900">Multiple Grid Sizes</h3>
-              <p className="mt-2 text-base text-gray-500">
-                Generate 15x15, 10x10, and 5x5 grid patterns from your images.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="flex items-center justify-center h-12 w-12 rounded-md bg-blue-500 text-white mx-auto">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
-              <h3 className="mt-6 text-lg font-medium text-gray-900">Secure Storage</h3>
-              <p className="mt-2 text-base text-gray-500">
-                Your images are securely stored and accessible only to you.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="flex items-center justify-center h-12 w-12 rounded-md bg-blue-500 text-white mx-auto">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </div>
-              <h3 className="mt-6 text-lg font-medium text-gray-900">Local Processing</h3>
-              <p className="mt-2 text-base text-gray-500">
-                Option to process images locally without server upload.
-              </p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Featured Images Grid */}
+      <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <h2 className="text-3xl font-bold text-gray-900 mb-8">Featured Images</h2>
+        {isLoading ? (
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {featuredImages.map((image) => (
+              <button
+                key={image.id}
+                onClick={() => setSelectedImage(image)}
+                className="group aspect-square relative overflow-hidden rounded-lg bg-gray-100 hover:opacity-90 transition-all duration-300 transform hover:scale-105"
+              >
+                <img
+                  src={image.grid15_url}
+                  alt="Guess the image"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center">
+                  <span className="text-white opacity-0 group-hover:opacity-100 font-medium">
+                    Play Now
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Game Modal */}
+      <Modal
+        isOpen={!!selectedImage}
+        onClose={() => setSelectedImage(null)}
+        title="Guess the Image"
+      >
+        {selectedImage && (
+          <GuessGame
+            image={selectedImage}
+            onClose={() => setSelectedImage(null)}
+          />
+        )}
+      </Modal>
     </div>
   )
 } 

@@ -1,16 +1,14 @@
 export interface UserImage {
   id: string
-  user_id: string
   name: string
-  category: string
-  published: boolean
-  upload_id: string
-  original_url: string
   grid15_url: string
   grid10_url: string
   grid5_url: string
-  created_at: string
-  tags?: string[]
+  original_url: string
+  category: string
+  published: boolean
+  created_at?: string
+  user_id?: string
 }
 
 export interface Tag {
