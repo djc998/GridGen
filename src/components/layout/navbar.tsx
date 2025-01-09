@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useAuth } from '@/components/providers/auth-provider'
 import { usePathname } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
 export default function Navbar() {
   const { user, loading } = useAuth()
@@ -11,6 +12,14 @@ export default function Navbar() {
   // Don't show navbar on login or signup pages
   if (pathname === '/login' || pathname === '/signup') {
     return null
+  }
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.error('Error signing out:', error)
+    }
   }
 
   return (
@@ -43,8 +52,14 @@ export default function Navbar() {
                     >
                       Upload
                     </Link>
+                    <Link
+                      href="/view"
+                      className="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+                    >
+                      Play Game
+                    </Link>
                     <button
-                      onClick={() => supabase.auth.signOut()}
+                      onClick={handleSignOut}
                       className="text-red-600 hover:text-red-500"
                     >
                       Sign out

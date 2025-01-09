@@ -9,4 +9,7 @@ export const createClient = () => {
   }
 
   return createBrowserClient(supabaseUrl, supabaseAnonKey)
-} 
+}
+
+// Export a default instance
+export const supabase = createClient() 

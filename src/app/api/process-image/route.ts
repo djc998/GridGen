@@ -40,6 +40,9 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File
     const name = formData.get('name') as string
     const category = formData.get('category') as string
+    const tags = JSON.parse(formData.get('tags') as string) as string[]
+    const shouldSave = formData.get('save') === 'true'
+    const published = formData.get('published') === 'true'
 
     if (!file || !name || !category) {
       return NextResponse.json(
@@ -109,47 +112,60 @@ export async function POST(request: NextRequest) {
         grid5: supabase.storage.from('images').getPublicUrl(`grid5/${filename}`).data.publicUrl,
       }
 
-      // Generate a unique identifier for this upload
-      const uploadId = `${user.id}_${timestamp}`
+      let imageId = null
 
-      console.log(`[${requestId}] Starting database insert with upload_id: ${uploadId}`)
-      // Save to database with a unique constraint
-      const { data: insertedImage, error: dbError } = await supabase
-        .from('images')
-        .upsert({
-          user_id: user.id,
-          upload_id: uploadId,
-          name: name,
-          category: category,
-          original_url: urls.original,
-          grid15_url: urls.grid15,
-          grid10_url: urls.grid10,
-          grid5_url: urls.grid5,
-        }, {
-          onConflict: 'upload_id',
-          ignoreDuplicates: true
-        })
-        .select()
-        .single()
+      // Only save to database if shouldSave is true
+      if (shouldSave) {
+        const uploadId = `${user.id}_${timestamp}`
+        const { data: insertedImage, error: dbError } = await supabase
+          .from('images')
+          .upsert({
+            user_id: user.id,
+            upload_id: uploadId,
+            name: name,
+            category: category,
+            published: published,
+            original_url: urls.original,
+            grid15_url: urls.grid15,
+            grid10_url: urls.grid10,
+            grid5_url: urls.grid5,
+          }, {
+            onConflict: 'upload_id',
+            ignoreDuplicates: true
+          })
+          .select()
+          .single()
 
-      if (dbError) {
-        console.error(`[${requestId}] Database error:`, dbError)
-        // Clean up uploaded files if database insert fails
-        await Promise.all([
-          supabase.storage.from('images').remove([`original/${filename}`]),
-          supabase.storage.from('images').remove([`grid15/${filename}`]),
-          supabase.storage.from('images').remove([`grid10/${filename}`]),
-          supabase.storage.from('images').remove([`grid5/${filename}`]),
-        ])
-        throw dbError
+        if (dbError) {
+          console.error(`[${requestId}] Database error:`, dbError)
+          // Clean up uploaded files if database insert fails
+          await Promise.all([
+            supabase.storage.from('images').remove([`original/${filename}`]),
+            supabase.storage.from('images').remove([`grid15/${filename}`]),
+            supabase.storage.from('images').remove([`grid10/${filename}`]),
+            supabase.storage.from('images').remove([`grid5/${filename}`]),
+          ])
+          throw dbError
+        }
+
+        imageId = insertedImage.id
+
+        // Add tags
+        if (tags.length > 0) {
+          await supabase
+            .from('image_tags')
+            .insert(
+              tags.map(tag => ({
+                image_id: imageId,
+                tag_name: tag
+              }))
+            )
+        }
       }
-
-      console.log(`[${requestId}] Database insert successful, image ID:`, insertedImage.id)
-      processedRequests.delete(requestId)
 
       return NextResponse.json({
         urls,
-        imageId: insertedImage.id
+        imageId
       })
 
     } catch (uploadError) {

@@ -1,15 +1,21 @@
 'use client'
 
-import { type ReactElement } from 'react'
-import ProtectedRoute from '@/components/auth/protected-route'
+import { useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import ImageUploader from '@/components/upload/image-uploader'
+import ProtectedRoute from '@/components/auth/protected-route'
 
-export default function UploadPage(): ReactElement {
+export default function UploadPage() {
+  const searchParams = useSearchParams()
+  const editId = searchParams.get('edit')
+
   return (
     <ProtectedRoute>
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">Upload Image</h1>
-        <ImageUploader />
+      <div className="container mx-auto py-8">
+        <h1 className="text-2xl font-bold mb-8">
+          {editId ? 'Edit Image' : 'Upload New Image'}
+        </h1>
+        <ImageUploader editId={editId} />
       </div>
     </ProtectedRoute>
   )

@@ -32,7 +32,16 @@ interface Category {
   name: string
 }
 
-function ImageUploaderContent() {
+interface Tag {
+  id: string
+  name: string
+}
+
+interface ImageUploaderProps {
+  editId?: string | null
+}
+
+function ImageUploaderContent({ editId }: ImageUploaderProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [images, setImages] = useState<UploadedImages | null>(null)
   const [isLocalProcessing, setIsLocalProcessing] = useState(false)
@@ -42,6 +51,11 @@ function ImageUploaderContent() {
   const [imageName, setImageName] = useState('')
   const [category, setCategory] = useState('Other')
   const [categories, setCategories] = useState<Category[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [newTag, setNewTag] = useState('')
+  const [lastUploadedFile, setLastUploadedFile] = useState<File | null>(null)
+  const [isPublished, setIsPublished] = useState(false)
 
   // Fetch categories on component mount
   useEffect(() => {
@@ -61,6 +75,81 @@ function ImageUploaderContent() {
 
     fetchCategories()
   }, [])
+
+  // Fetch tags on component mount
+  useEffect(() => {
+    const fetchTags = async () => {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .order('name')
+
+      if (error) {
+        console.error('Error fetching tags:', error)
+        return
+      }
+
+      setTags(data || [])
+    }
+
+    fetchTags()
+  }, [])
+
+  // Fetch image data if editing
+  useEffect(() => {
+    const fetchImageData = async () => {
+      if (!editId) return
+
+      console.log('Fetching image data for ID:', editId)
+
+      try {
+        const { data: image, error } = await supabase
+          .from('images')
+          .select(`
+            *,
+            image_tags (
+              tag_name
+            )
+          `)
+          .eq('id', editId)
+          .single()
+
+        if (error) {
+          console.error('Fetch error:', error)
+          throw error
+        }
+
+        console.log('Raw image data:', image)
+
+        if (image) {
+          // Explicitly handle the boolean conversion
+          const publishedState = image.published === true
+
+          console.log('Published state details:', {
+            rawValue: image.published,
+            convertedValue: publishedState,
+            typeOfRaw: typeof image.published
+          })
+
+          setImageName(image.name)
+          setCategory(image.category)
+          setIsPublished(publishedState)
+          setSelectedTags(image.image_tags.map((tag: any) => tag.tag_name))
+          setImages({
+            original: image.original_url,
+            grid15: image.grid15_url,
+            grid10: image.grid10_url,
+            grid5: image.grid5_url,
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching image:', error)
+        showToast('Error loading image data', 'error')
+      }
+    }
+
+    fetchImageData()
+  }, [editId, showToast])
 
   const validateFile = (file: File): string | null => {
     if (!ALLOWED_FILE_TYPES.includes(file.type)) {
@@ -110,11 +199,14 @@ function ImageUploaderContent() {
     }
   }
 
-  const processOnServer = async (file: File): Promise<UploadedImages> => {
+  const processOnServer = async (file: File, save: boolean = false): Promise<UploadedImages> => {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('name', imageName || file.name.split('.')[0]) // Use file name if no custom name
+    formData.append('name', imageName || file.name.split('.')[0])
     formData.append('category', category)
+    formData.append('tags', JSON.stringify(selectedTags))
+    formData.append('save', save.toString())
+    formData.append('published', isPublished.toString())
 
     const response = await fetch('/api/process-image', {
       method: 'POST',
@@ -139,6 +231,8 @@ function ImageUploaderContent() {
       const file = event.target.files?.[0]
       if (!file) return
 
+      setLastUploadedFile(file) // Store the file for later use
+
       const validationError = validateFile(file)
       if (validationError) {
         showToast(validationError, 'error')
@@ -158,11 +252,10 @@ function ImageUploaderContent() {
         urls = await processLocally(file)
       } else {
         urls = await processOnServer(file)
-        showToast('Images uploaded successfully', 'success')
+        showToast('Images processed successfully', 'success')
       }
 
       setImages(urls)
-      router.push('/dashboard')
     } catch (error) {
       console.error('Upload failed:', error)
       showToast(
@@ -194,6 +287,134 @@ function ImageUploaderContent() {
     })}`
 
     window.open(previewUrl, '_blank', 'width=500,height=600')
+  }
+
+  const handleAddTag = async () => {
+    if (!newTag.trim()) return
+
+    const tagName = newTag.trim().toLowerCase()
+    
+    // Check if tag already exists in selected tags
+    if (selectedTags.includes(tagName)) {
+      showToast('Tag already added', 'error')
+      return
+    }
+
+    // Add to database if it's a new tag
+    const { error } = await supabase
+      .from('tags')
+      .upsert({ name: tagName })
+      .select()
+      .single()
+
+    if (error) {
+      showToast('Error adding tag', 'error')
+      return
+    }
+
+    setSelectedTags([...selectedTags, tagName])
+    setNewTag('')
+  }
+
+  const removeTag = (tagToRemove: string) => {
+    setSelectedTags(selectedTags.filter(tag => tag !== tagToRemove))
+  }
+
+  const handleSave = async () => {
+    if (!images) {
+      showToast('Please process an image first', 'error')
+      return
+    }
+
+    try {
+      if (editId) {
+        const updateData = {
+          name: imageName,
+          category: category,
+          published: isPublished,
+        }
+
+        console.log('EditId:', editId)
+        console.log('Update data:', updateData)
+
+        // First verify the record exists and user owns it
+        const { data: existingImage } = await supabase
+          .from('images')
+          .select('*')
+          .eq('id', editId)
+          .eq('user_id', user?.id)
+          .single()
+
+        console.log('Existing image:', existingImage)
+
+        if (!existingImage) {
+          throw new Error('Image not found or access denied')
+        }
+
+        // Perform the update with explicit conditions
+        const { error: updateError } = await supabase
+          .from('images')
+          .update({
+            name: imageName,
+            category: category,
+            published: isPublished,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editId)
+          .eq('user_id', user?.id)
+
+        if (updateError) {
+          console.error('Update error:', updateError)
+          throw updateError
+        }
+
+        // Verify the update with explicit conditions
+        const { data: verifyData } = await supabase
+          .from('images')
+          .select('*')
+          .eq('id', editId)
+          .eq('user_id', user?.id)
+          .single()
+
+        console.log('Verified data after update:', verifyData)
+
+        if (verifyData?.published !== isPublished) {
+          console.error('Update verification failed - published state mismatch')
+          throw new Error('Failed to update published state')
+        }
+
+        // Update tags
+        await supabase
+          .from('image_tags')
+          .delete()
+          .eq('image_id', editId)
+
+        if (selectedTags.length > 0) {
+          const { error: tagError } = await supabase
+            .from('image_tags')
+            .insert(
+              selectedTags.map(tag => ({
+                image_id: editId,
+                tag_name: tag
+              }))
+            )
+
+          if (tagError) {
+            console.error('Tag update error:', tagError)
+          }
+        }
+
+        showToast('Image updated successfully', 'success')
+      } else {
+        // Create new image
+        await processOnServer(lastUploadedFile!, true)
+      }
+      
+      router.push('/dashboard')
+    } catch (error) {
+      console.error('Error saving image:', error)
+      showToast('Error saving image', 'error')
+    }
   }
 
   return (
@@ -248,6 +469,59 @@ function ImageUploaderContent() {
             </select>
           </div>
         </div>
+
+        {/* Add Published Toggle */}
+        <div className="flex items-center gap-2 mt-4">
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isPublished}
+              onChange={async (e) => {
+                const newPublishedState = e.target.checked
+                console.log('Published state changing to:', newPublishedState)
+
+                if (editId) {
+                  try {
+                    // First update the state optimistically
+                    setIsPublished(newPublishedState)
+
+                    // Use the Supabase client instance
+                    const { error } = await supabase
+                      .from('images')
+                      .update({ published: newPublishedState })
+                      .eq('id', editId) // Use eq instead of match
+
+                    if (error) {
+                      console.error('Error updating published state:', error)
+                      showToast('Error updating published state', 'error')
+                      // Revert the state if update failed
+                      setIsPublished(!newPublishedState)
+                      return
+                    }
+
+                    showToast(
+                      `Image ${newPublishedState ? 'published' : 'unpublished'} successfully`,
+                      'success'
+                    )
+                  } catch (error) {
+                    console.error('Unexpected error:', error)
+                    showToast('Error updating published state', 'error')
+                    // Revert the state
+                    setIsPublished(!newPublishedState)
+                  }
+                } else {
+                  // If we're not in edit mode, just update the local state
+                  setIsPublished(newPublishedState)
+                }
+              }}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            <span className="ml-3 text-sm font-medium text-gray-700">
+              {isPublished ? 'Published' : 'Unpublished'}
+            </span>
+          </label>
+        </div>
       </div>
 
       {/* Upload Section */}
@@ -273,17 +547,87 @@ function ImageUploaderContent() {
         )}
       </div>
 
+      {/* Tags Section */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Tags</h2>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {selectedTags.map(tag => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+            >
+              {tag}
+              <button
+                onClick={() => removeTag(tag)}
+                className="hover:text-blue-600"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <input
+              type="text"
+              value={newTag}
+              onChange={(e) => setNewTag(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleAddTag()
+                }
+              }}
+              placeholder="Add a tag"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <button
+            onClick={handleAddTag}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Add
+          </button>
+        </div>
+        <div className="mt-2">
+          <p className="text-sm text-gray-600 mb-2">Suggested tags:</p>
+          <div className="flex flex-wrap gap-2">
+            {tags.map(tag => (
+              <button
+                key={tag.id}
+                onClick={() => {
+                  if (!selectedTags.includes(tag.name)) {
+                    setSelectedTags([...selectedTags, tag.name])
+                  }
+                }}
+                className="px-2 py-1 text-sm border border-gray-300 rounded-full hover:bg-gray-50"
+              >
+                {tag.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Generated Links and Preview Button */}
       {images && (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-semibold">Generated Images</h2>
-            <button
-              onClick={openPreviewWindow}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            >
-              Open Animation Preview
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={openPreviewWindow}
+                className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+              >
+                Open Animation Preview
+              </button>
+              <button
+                onClick={handleSave}
+                className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+              >
+                Save
+              </button>
+            </div>
           </div>
           <div className="space-y-2">
             {Object.entries(images).map(([key, url]) => (
@@ -306,10 +650,10 @@ function ImageUploaderContent() {
 }
 
 // Export the wrapped component
-const ImageUploader = () => {
+const ImageUploader = ({ editId }: ImageUploaderProps) => {
   return (
     <ErrorBoundary>
-      <ImageUploaderContent />
+      <ImageUploaderContent editId={editId} />
     </ErrorBoundary>
   )
 }

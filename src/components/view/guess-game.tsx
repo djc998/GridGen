@@ -1,0 +1,110 @@
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
+import { UserImage } from '@/types/database'
+
+interface GuessGameProps {
+  image: UserImage
+  onClose: () => void
+}
+
+export function GuessGame({ image, onClose }: GuessGameProps) {
+  const [currentGuess, setCurrentGuess] = useState('')
+  const [timeLeft, setTimeLeft] = useState(30)
+  const [currentImage, setCurrentImage] = useState(image.grid15_url)
+  const [gameEnded, setGameEnded] = useState(false)
+  const [revealed, setRevealed] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    // Focus input on mount
+    inputRef.current?.focus()
+
+    // Timer logic
+    const timer = setInterval(() => {
+      setTimeLeft((time) => {
+        if (time <= 1) {
+          clearInterval(timer)
+          setGameEnded(true)
+          return 0
+        }
+        
+        // Change image based on time
+        if (time === 20) {
+          setCurrentImage(image.grid10_url)
+        } else if (time === 10) {
+          setCurrentImage(image.grid5_url)
+        }
+        
+        return time - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [image])
+
+  const handleGuess = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (currentGuess.toLowerCase() === image.name.toLowerCase()) {
+      setGameEnded(true)
+      setRevealed(true)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="relative aspect-video">
+        <img
+          src={revealed ? image.original_url : currentImage}
+          alt="Guess the image"
+          className="w-full h-full object-contain"
+        />
+      </div>
+
+      <div className="flex justify-between items-center">
+        <div className="text-lg font-semibold">
+          Time Left: {timeLeft}s
+        </div>
+        {gameEnded && !revealed && (
+          <button
+            onClick={() => setRevealed(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Reveal Answer
+          </button>
+        )}
+      </div>
+
+      {!gameEnded && (
+        <form onSubmit={handleGuess} className="space-y-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={currentGuess}
+            onChange={(e) => setCurrentGuess(e.target.value)}
+            placeholder="Enter your guess..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
+          <button
+            type="submit"
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Submit Guess
+          </button>
+        </form>
+      )}
+
+      {revealed && (
+        <div className="text-center">
+          <p className="text-xl font-semibold mb-2">Answer: {image.name}</p>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </div>
+  )
+} 
