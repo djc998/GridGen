@@ -2,13 +2,39 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { UserImage } from '@/types/database'
+import { useToast } from '@/components/ui/toast'
 
 interface GuessGameProps {
   image: UserImage
   onClose: () => void
 }
 
+// Add minimum word length constant
+const MIN_WORD_LENGTH = 3
+
+// Add minimum required words ratio
+const MIN_WORDS_RATIO = 0.75
+
+const normalizeString = (str: string): string[] => {
+  return str
+    .toLowerCase()
+    // Remove apostrophes and special characters
+    .replace(/[''`"]/g, '')
+    // Replace special characters and multiple spaces with single space
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    // Trim whitespace and split into words
+    .trim()
+    .split(' ')
+    // Filter out empty strings and common words
+    .filter(word => word && !['the', 'a', 'an', 'as', 
+      'by', 'for', 'of', 'at', 'to', 'from', 'up', 'down', 
+      'in', 'out', 'on', 'off', 'over', 'under', 'again', 
+      'further', 'then', 'once'].includes(word))
+}
+
 export function GuessGame({ image, onClose }: GuessGameProps) {
+  const { showToast } = useToast()
   const [currentGuess, setCurrentGuess] = useState('')
   const [timeLeft, setTimeLeft] = useState(30)
   const [currentImage, setCurrentImage] = useState(image.grid15_url)
@@ -45,9 +71,59 @@ export function GuessGame({ image, onClose }: GuessGameProps) {
 
   const handleGuess = (e: React.FormEvent) => {
     e.preventDefault()
-    if (currentGuess.toLowerCase() === image.name.toLowerCase()) {
-      setGameEnded(true)
-      setRevealed(true)
+    if (!currentGuess.trim()) return
+
+    // Normalize both strings into word arrays
+    const guessWords = normalizeString(currentGuess)
+    const answerWords = normalizeString(image.name)
+
+    // Don't allow empty guesses after normalization
+    if (guessWords.length === 0) {
+      setCurrentGuess('')
+      showToast('Invalid guess, try again!', 'error')
+      return
+    }
+
+    // For multi-word answers, require more complete matches
+    if (answerWords.length > 1) {
+      // Must have guessed enough words
+      const requiredWords = Math.ceil(answerWords.length * MIN_WORDS_RATIO)
+      if (guessWords.length < requiredWords) {
+        setCurrentGuess('')
+        showToast('Try guessing more words!', 'error')
+        return
+      }
+
+      // Check if the guessed words match the answer words exactly
+      const isCorrect = guessWords.length >= requiredWords && 
+        guessWords.every(word => 
+          answerWords.some(answerWord => 
+            word.toLowerCase() === answerWord.toLowerCase()
+          )
+        )
+
+      if (isCorrect) {
+        setGameEnded(true)
+        setRevealed(true)
+        showToast('Correct! 🎉', 'success')
+      } else {
+        setCurrentGuess('')
+        showToast('Incorrect, try again!', 'error')
+      }
+    } else {
+      // Single word answer - use stricter matching
+      const isCorrect = guessWords.length === 1 && 
+        guessWords[0].length >= MIN_WORD_LENGTH &&
+        guessWords[0].toLowerCase() === answerWords[0].toLowerCase()
+
+      if (isCorrect) {
+        setGameEnded(true)
+        setRevealed(true)
+        showToast('Correct! 🎉', 'success')
+      } else {
+        setCurrentGuess('')
+        showToast('Incorrect, try again!', 'error')
+      }
     }
   }
 
