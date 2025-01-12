@@ -38,11 +38,7 @@ function PreviewContent() {
 export default function PreviewPage() {
   return (
     <ErrorBoundary>
-      <Suspense fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <LoadingSpinner size="large" />
-        </div>
-      }>
+      <Suspense fallback={<LoadingSpinner />}>
         <PreviewContent />
       </Suspense>
     </ErrorBoundary>
