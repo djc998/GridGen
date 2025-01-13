@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function Navbar() {
-  const { user, loading } = useAuth()
+  const { user, loading, signOut } = useAuth()
   const pathname = usePathname()
 
   // Don't show navbar on login or signup pages
@@ -16,7 +16,7 @@ export default function Navbar() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      await signOut()
     } catch (error) {
       console.error('Error signing out:', error)
     }

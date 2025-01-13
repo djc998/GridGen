@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { BackButton } from '@/components/ui/back-button'
+import { useAuth } from '@/components/providers/auth-provider'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const { signIn } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -19,14 +21,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) throw error
-
-      router.push('/dashboard')
+      await signIn(email, password)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred')
     } finally {
