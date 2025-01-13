@@ -1,7 +1,7 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
-import { User } from '@supabase/supabase-js'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { User, AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
@@ -24,58 +24,92 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  useEffect(() => {
-    // Check active sessions and sets the user
-    const initializeAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        setUser(session?.user ?? null)
-        setLoading(false)
+  const clearSession = useCallback(() => {
+    setUser(null)
+    setLoading(false)
+    router.push('/login')
+  }, [router])
 
-        // Listen for changes on auth state
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-          setUser(session?.user ?? null)
-          setLoading(false)
-        })
-
-        return () => subscription.unsubscribe()
-      } catch (error) {
-        console.error('Error initializing auth:', error)
-        setLoading(false)
-      }
+  const handleSession = useCallback((session: Session | null) => {
+    if (session?.user) {
+      setUser(session.user)
+    } else {
+      setUser(null)
     }
-
-    initializeAuth()
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    let mounted = true
+
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return
+      handleSession(session)
+    })
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event: AuthChangeEvent, session: Session | null) => {
+        if (!mounted) return
+        
+        switch (event) {
+          case 'SIGNED_IN':
+            handleSession(session)
+            router.push('/dashboard')
+            break
+          case 'SIGNED_OUT':
+            clearSession()
+            break
+          case 'TOKEN_REFRESHED':
+            handleSession(session)
+            break
+          case 'USER_UPDATED':
+            handleSession(session)
+            break
+        }
+      }
+    )
+
+    // Cleanup subscription
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [router, clearSession, handleSession])
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      setLoading(true)
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
+
       if (error) throw error
+      if (!data?.session) throw new Error('No session created')
+
+      handleSession(data.session)
       router.push('/dashboard')
     } catch (error) {
+      console.error('Sign in error:', error)
       throw error
+    } finally {
+      setLoading(false)
     }
   }
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut()
-      // Even if there's an error (like missing session), we want to clear the local state
-      setUser(null)
-      router.push('/login')
-      
-      // Only throw if it's not a missing session error
-      if (error && !error.message.includes('Auth session missing')) {
-        throw error
-      }
+      setLoading(true)
+      await supabase.auth.signOut()
+      clearSession()
     } catch (error) {
-      console.error('Error signing out:', error)
-      // Still redirect to login page even if there's an error
-      router.push('/login')
+      console.error('Sign out error:', error)
+      clearSession()
+    } finally {
+      setLoading(false)
     }
   }
 
