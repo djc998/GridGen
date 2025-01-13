@@ -20,6 +20,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedTag, setSelectedTag] = useState('')
+  const [selectedImages, setSelectedImages] = useState<string[]>([])
 
   useEffect(() => {
     const fetchImages = async () => {
@@ -112,43 +113,103 @@ export default function DashboardPage() {
     return matchesQuery && matchesCategory && matchesTag
   })
 
+  const handleImageSelect = (imageId: string) => {
+    setSelectedImages(prev => 
+      prev.includes(imageId) 
+        ? prev.filter(id => id !== imageId)
+        : [...prev, imageId]
+    )
+  }
+
+  const handleExport = async () => {
+    if (selectedImages.length === 0) {
+      showToast('Please select at least one image to export', 'error')
+      return
+    }
+
+    try {
+      const selectedImageData = images.filter(img => selectedImages.includes(img.id))
+      
+      const response = await fetch('/api/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ images: selectedImageData }),
+      })
+
+      if (!response.ok) throw new Error('Export failed')
+
+      // Get the blob from the response
+      const blob = await response.blob()
+      
+      // Create a download link and trigger it
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `exported_images_${new Date().toISOString().split('T')[0]}.zip`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      showToast('Export completed successfully', 'success')
+    } catch (error) {
+      console.error('Export error:', error)
+      showToast('Failed to export images', 'error')
+    }
+  }
+
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">My Images</h1>
-        <input
-          type="text"
-          placeholder="Search images..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="border px-4 py-2 rounded-md"
-        />
-        <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="border px-4 py-2 rounded-md"
-        >
-          <option value="">All Categories</option>
-          {uniqueCategories.map(category => (
-            <option key={category} value={category}>{category}</option>
-          ))}
-        </select>
-        <select
-          value={selectedTag}
-          onChange={(e) => setSelectedTag(e.target.value)}
-          className="border px-4 py-2 rounded-md"
-        >
-          <option value="">All Tags</option>
-          {uniqueTags.map(tag => (
-            <option key={tag} value={tag}>{tag}</option>
-          ))}
-        </select>
-        <Link
-          href="/upload"
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-        >
-          Upload New Image
-        </Link>
+        <div className="flex items-center gap-4">
+          <input
+            type="text"
+            placeholder="Search images..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="border px-4 py-2 rounded-md"
+          />
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="border px-4 py-2 rounded-md"
+          >
+            <option value="">All Categories</option>
+            {uniqueCategories.map(category => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+          <select
+            value={selectedTag}
+            onChange={(e) => setSelectedTag(e.target.value)}
+            className="border px-4 py-2 rounded-md"
+          >
+            <option value="">All Tags</option>
+            {uniqueTags.map(tag => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleExport}
+            disabled={selectedImages.length === 0}
+            className={`px-4 py-2 rounded-md ${
+              selectedImages.length === 0
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+          >
+            Export Selected ({selectedImages.length})
+          </button>
+          <Link
+            href="/upload"
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+          >
+            Upload New Image
+          </Link>
+        </div>
       </div>
 
       {isLoading ? (
@@ -160,8 +221,20 @@ export default function DashboardPage() {
           {filteredImages.map((image) => (
             <div
               key={image.id}
-              className="bg-white rounded-lg shadow-md overflow-hidden group relative"
+              className={`bg-white rounded-lg shadow-md overflow-hidden group relative ${
+                selectedImages.includes(image.id) ? 'ring-2 ring-blue-500' : ''
+              }`}
+              onClick={() => handleImageSelect(image.id)}
             >
+              <div className="absolute top-2 left-2 z-10">
+                <input
+                  type="checkbox"
+                  checked={selectedImages.includes(image.id)}
+                  onChange={() => handleImageSelect(image.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-5 w-5 rounded border-gray-300"
+                />
+              </div>
               <div className="aspect-square relative">
                 <img
                   src={image.grid15_url}
