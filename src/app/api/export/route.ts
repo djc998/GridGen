@@ -32,7 +32,13 @@ async function fetchAndConvertToJpg(url: string): Promise<Buffer> {
       .toBuffer()
   } catch (error) {
     console.error(`Error processing image from URL ${url}:`, error)
-    throw new Error(`Failed to process image: ${error.message}`)
+    
+    // Fix 1: Type checking approach (recommended)
+    if (error instanceof Error) {
+      throw new Error(`Failed to process image: ${error.message}`)
+    }
+    // Generic fallback
+    throw new Error('Failed to process image: Unknown error')
   }
 }
 
@@ -93,7 +99,11 @@ export async function POST(request: NextRequest) {
         return { success: true, name: image.name }
       } catch (error) {
         console.error(`Error processing image ${image.name}:`, error)
-        return { success: false, name: image.name, error: error.message }
+        if (error instanceof Error) {
+          return { success: false, name: image.name, error: error.message }
+        }
+        // Fallback for unknown error types
+        return { success: false, name: image.name, error: 'Unknown error occurred' }
       }
     }))
 
@@ -124,10 +134,17 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Export error:', error)
+    if (error instanceof Error) {
+      return NextResponse.json({ 
+        error: 'Failed to export images',
+        details: error.message 
+      }, { status: 500 })
+    }
+    
+    // Fallback for unknown error types
     return NextResponse.json({ 
       error: 'Failed to export images',
-      details: error.message 
+      details: 'An unknown error occurred'
     }, { status: 500 })
   }
 } 
