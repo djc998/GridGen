@@ -3,71 +3,89 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { UserImage } from '@/types/database'
-import { GuessGame } from '@/components/view/guess-game'
 import LoadingSpinner from '@/components/ui/loading-spinner'
 import { useRouter } from 'next/navigation'
+import { Play } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+
+interface Game {
+  id: string
+  title: string
+  category: string
+  description: string
+  created_at: string
+  created_by: string
+  status: 'draft' | 'published'
+  game_images: {
+    image_id: string
+    sequence_order: number
+    image: UserImage
+  }[]
+}
 
 export default function ViewPage() {
-  const [images, setImages] = useState<UserImage[]>([])
-  const [filteredImages, setFilteredImages] = useState<UserImage[]>([])
-  const [selectedImage, setSelectedImage] = useState<UserImage | null>(null)
+  const [games, setGames] = useState<Game[]>([])
+  const [filteredGames, setFilteredGames] = useState<Game[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [categories, setCategories] = useState<Set<string>>(new Set())
   const router = useRouter()
 
-  // Fetch images and build category list
+  // Fetch published games and build category list
   useEffect(() => {
-    const fetchImages = async () => {
+    const fetchGames = async () => {
       try {
         const { data, error } = await supabase
-          .from('images')
-          .select('*')
-          .eq('published', true)
+          .from('games')
+          .select(`
+            *,
+            game_images (
+              image_id,
+              sequence_order,
+              image:images (*)
+            )
+          `)
+          .eq('status', 'published')
           .order('created_at', { ascending: false })
 
         if (error) throw error
 
-        const imageData = data as UserImage[]
-        setImages(imageData)
-        setFilteredImages(imageData)
+        const gameData = data as Game[]
+        setGames(gameData)
+        setFilteredGames(gameData)
 
         // Build unique categories list
-        const uniqueCategories = new Set(imageData.map(img => img.category))
+        const uniqueCategories = new Set(gameData.map(game => game.category))
         setCategories(uniqueCategories)
       } catch (error) {
-        console.error('Error fetching images:', error)
+        console.error('Error fetching games:', error)
       } finally {
         setIsLoading(false)
       }
     }
 
-    fetchImages()
+    fetchGames()
   }, [])
 
-  // Filter images when category changes
+  // Filter games when category changes
   useEffect(() => {
     if (selectedCategory === 'all') {
-      setFilteredImages(images)
+      setFilteredGames(games)
     } else {
-      setFilteredImages(images.filter(img => img.category === selectedCategory))
+      setFilteredGames(games.filter(game => game.category === selectedCategory))
     }
-  }, [selectedCategory, images])
+  }, [selectedCategory, games])
 
-  // Group images by category
-  const groupImagesByCategory = (images: UserImage[]) => {
-    const grouped = new Map<string, UserImage[]>()
-    images.forEach(image => {
-      if (!grouped.has(image.category)) {
-        grouped.set(image.category, [])
+  // Group games by category
+  const groupGamesByCategory = (games: Game[]) => {
+    const grouped = new Map<string, Game[]>()
+    games.forEach(game => {
+      if (!grouped.has(game.category)) {
+        grouped.set(game.category, [])
       }
-      grouped.get(image.category)?.push(image)
+      grouped.get(game.category)?.push(game)
     })
     return grouped
-  }
-
-  const handleImageClick = (image: UserImage) => {
-    router.push(`/play/${image.id}`)
   }
 
   if (isLoading) {
@@ -97,11 +115,11 @@ export default function ViewPage() {
             >
               All Categories
               <span className="ml-2 text-xs">
-                ({images.length})
+                ({games.length})
               </span>
             </button>
             {Array.from(categories).sort().map(category => {
-              const count = images.filter(img => img.category === category).length
+              const count = games.filter(game => game.category === category).length
               return (
                 <button
                   key={category}
@@ -123,35 +141,48 @@ export default function ViewPage() {
         </div>
       </div>
 
-      {/* Image Grid with Categories */}
+      {/* Game Grid with Categories */}
       <div className="space-y-12">
         {selectedCategory === 'all' ? (
-          Array.from(groupImagesByCategory(filteredImages)).map(([category, categoryImages]) => (
+          Array.from(groupGamesByCategory(filteredGames)).map(([category, categoryGames]) => (
             <div key={category}>
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
                 {category}
                 <span className="ml-2 text-lg font-normal text-gray-500">
-                  ({categoryImages.length})
+                  ({categoryGames.length})
                 </span>
               </h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {categoryImages.map((image) => (
-                  <button
-                    key={image.id}
-                    onClick={() => handleImageClick(image)}
-                    className="group aspect-square relative overflow-hidden rounded-lg bg-gray-100 hover:opacity-90 transition-all duration-300 transform hover:scale-105"
-                  >
-                    <img
-                      src={image.grid15_url}
-                      alt="Guess the image"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center">
-                      <span className="text-white opacity-0 group-hover:opacity-100 font-medium">
-                        Play Now
-                      </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {categoryGames.map((game) => (
+                  <div key={game.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+                    <div className="aspect-square relative">
+                      {game.game_images && game.game_images[0] && (
+                        <img
+                          src={game.game_images[0].image.grid15_url}
+                          alt={game.title}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => router.push(`/play/${game.id}`)}
+                          className="bg-blue-600 text-white px-6 py-3 rounded-full hover:bg-blue-700 flex items-center space-x-2"
+                        >
+                          <Play className="w-5 h-5" />
+                          <span>Play Game</span>
+                        </button>
+                      </div>
                     </div>
-                  </button>
+                    <div className="p-4">
+                      <h3 className="font-semibold text-lg mb-2">{game.title}</h3>
+                      {game.description && (
+                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">{game.description}</p>
+                      )}
+                      <p className="text-xs text-gray-500">
+                        Created {formatDistanceToNow(new Date(game.created_at))} ago
+                      </p>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -161,46 +192,51 @@ export default function ViewPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-6">
               {selectedCategory}
               <span className="ml-2 text-lg font-normal text-gray-500">
-                ({filteredImages.length})
+                ({filteredGames.length})
               </span>
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {filteredImages.map((image) => (
-                <button
-                  key={image.id}
-                  onClick={() => handleImageClick(image)}
-                  className="group aspect-square relative overflow-hidden rounded-lg bg-gray-100 hover:opacity-90 transition-all duration-300 transform hover:scale-105"
-                >
-                  <img
-                    src={image.grid15_url}
-                    alt="Guess the image"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center">
-                    <span className="text-white opacity-0 group-hover:opacity-100 font-medium">
-                      Play Now
-                    </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {filteredGames.map((game) => (
+                <div key={game.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+                  <div className="aspect-square relative">
+                    {game.game_images && game.game_images[0] && (
+                      <img
+                        src={game.game_images[0].image.grid15_url}
+                        alt={game.title}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => router.push(`/play/${game.id}`)}
+                        className="bg-blue-600 text-white px-6 py-3 rounded-full hover:bg-blue-700 flex items-center space-x-2"
+                      >
+                        <Play className="w-5 h-5" />
+                        <span>Play Game</span>
+                      </button>
+                    </div>
                   </div>
-                </button>
+                  <div className="p-4">
+                    <h3 className="font-semibold text-lg mb-2">{game.title}</h3>
+                    {game.description && (
+                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">{game.description}</p>
+                    )}
+                    <p className="text-xs text-gray-500">
+                      Created {formatDistanceToNow(new Date(game.created_at))} ago
+                    </p>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
         )}
       </div>
 
-      {/* Game Modal */}
-      {selectedImage && (
-        <GuessGame
-          image={selectedImage}
-          onClose={() => setSelectedImage(null)}
-        />
-      )}
-
       {/* Empty State */}
-      {filteredImages.length === 0 && (
+      {filteredGames.length === 0 && (
         <div className="text-center py-12">
           <p className="text-gray-500 text-lg">
-            No images found in this category
+            No games found in this category
           </p>
         </div>
       )}
