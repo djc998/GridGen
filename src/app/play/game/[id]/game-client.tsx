@@ -37,6 +37,8 @@ interface GameClientProps {
 }
 
 export default function GameClient({ id }: GameClientProps) {
+  console.log('GameClient mounting with id:', id)
+
   const [game, setGame] = useState<Game | null>(null)
   const [gameState, setGameState] = useState<GameState>('loading')
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
@@ -49,23 +51,40 @@ export default function GameClient({ id }: GameClientProps) {
   const { showToast } = useToast()
   const router = useRouter()
 
+  console.log('Current state:', { gameState, game, user })
+
   // Fetch game data
   useEffect(() => {
     const fetchGame = async () => {
+      console.log('Fetching game data for id:', id)
       try {
+        // Fetch game data
         const { data: gameData, error: gameError } = await supabase
           .from('games')
-          .select('*')
+          .select(`
+            id,
+            title,
+            category,
+            description,
+            randomize_images,
+            settings,
+            created_at
+          `)
           .eq('id', id)
           .single()
 
-        if (gameError) throw gameError
+        if (gameError) {
+          console.error('Error fetching game data:', gameError)
+          throw gameError
+        }
 
-        const { data: imageData, error: imageError } = await supabase
+        // Fetch game images
+        const { data: gameImagesData, error: gameImagesError } = await supabase
           .from('game_images')
           .select(`
             image_id,
-            images (
+            sequence_order,
+            image:images (
               id,
               name,
               original_url,
@@ -77,22 +96,53 @@ export default function GameClient({ id }: GameClientProps) {
           .eq('game_id', id)
           .order('sequence_order', { ascending: true })
 
-        if (imageError) throw imageError
+        if (gameImagesError) {
+          console.error('Error fetching game images:', gameImagesError)
+          throw gameImagesError
+        }
 
-        setGame({
-          ...gameData,
-          images: imageData.map((item: any) => item.images)
+        // Process the game images data
+        const processedGameImages = gameImagesData.map((item: any) => {
+          const imageData = Array.isArray(item.image) ? item.image[0] : item.image
+          if (!imageData) {
+            console.error('Missing image data for game image:', item)
+            throw new Error('Missing image data')
+          }
+          return {
+            id: imageData.id,
+            name: imageData.name,
+            original_url: imageData.original_url,
+            grid15_url: imageData.grid15_url,
+            grid10_url: imageData.grid10_url,
+            grid5_url: imageData.grid5_url
+          }
         })
+
+        // Parse settings if it's a string
+        const settings = typeof gameData.settings === 'string' 
+          ? JSON.parse(gameData.settings)
+          : gameData.settings
+
+        // Combine the data
+        const fullGameData = {
+          ...gameData,
+          settings,
+          images: processedGameImages
+        }
+
+        console.log('Game data loaded successfully:', fullGameData)
+        setGame(fullGameData)
         setGameState('playing')
-        setTimeLeft(gameData.settings.duration15x15)
+        setTimeLeft(settings.duration15x15)
       } catch (error) {
-        console.error('Error fetching game:', error)
+        console.error('Error loading game:', error)
         showToast('Failed to load game', 'error')
+        router.push('/')
       }
     }
 
     fetchGame()
-  }, [id])
+  }, [id, router, showToast])
 
   // Timer effect
   useEffect(() => {
@@ -148,7 +198,7 @@ export default function GameClient({ id }: GameClientProps) {
     setTimeLeft(game.settings.durationAnswer)
     setGameState('playing')
 
-    // Save progress if user is logged in
+    // Only try to save progress if user is logged in
     if (user) {
       try {
         await supabase.from('game_sessions').insert({
@@ -159,13 +209,21 @@ export default function GameClient({ id }: GameClientProps) {
           answers: [...answers, { correct: isCorrect, guess }]
         })
       } catch (error) {
+        // Just log the error but don't affect gameplay
         console.error('Error saving progress:', error)
       }
     }
-  }, [game, currentImageIndex, guess, answers, score, user])
+  }, [game, currentImageIndex, guess, answers, score, user, showToast])
 
   if (!game || gameState === 'loading') {
-    return <LoadingSpinner />
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
+          <p className="text-lg text-gray-600">Loading game data...</p>
+        </div>
+      </div>
+    )
   }
 
   const currentImage = game.images[currentImageIndex]
