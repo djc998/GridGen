@@ -34,16 +34,25 @@ export function BulkUpload() {
     if (!files.length) return
 
     const newImages: BulkImageItem[] = await Promise.all(
-      files.map(async (file) => ({
-        file,
-        name: '',
-        category: '',
-        previewUrl: URL.createObjectURL(file),
-        status: 'pending',
-        tags: [],
-        newTag: '',
-        isPublished: false
-      }))
+      files.map(async (file) => {
+        // Parse the filename to get the name
+        const fileName = file.name
+        // Remove file extension first
+        const nameWithoutExtension = fileName.replace(/\.[^/.]+$/, '')
+        // Split by underscore and take the first part
+        const parsedName = nameWithoutExtension.split('_')[0]
+
+        return {
+          file,
+          name: parsedName,
+          category: '',
+          previewUrl: URL.createObjectURL(file),
+          status: 'pending',
+          tags: [],
+          newTag: '',
+          isPublished: false
+        }
+      })
     )
 
     setImages([...images, ...newImages])

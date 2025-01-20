@@ -57,7 +57,19 @@ export default function PlayGamePage() {
 
   useEffect(() => {
     const fetchGame = async () => {
-      if (!user || !params.id) return
+      if (!params.id) {
+        showToast('Game ID is missing', 'error')
+        router.push('/dashboard')
+        setLoading(false)
+        return
+      }
+
+      if (!user) {
+        showToast('Please sign in to play', 'error')
+        router.push('/login')
+        setLoading(false)
+        return
+      }
 
       try {
         // First, fetch the game with its settings
@@ -76,6 +88,7 @@ export default function PlayGamePage() {
           .single()
 
         if (gameError) throw gameError
+        if (!gameData) throw new Error('Game not found')
 
         // Parse settings if it's a string
         const settings = typeof gameData.settings === 'string' 
